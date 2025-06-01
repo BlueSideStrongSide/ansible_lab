@@ -1,6 +1,6 @@
 ---
-- name: Setup local user with SSH key and sudo access
-  hosts: all # Or specify your target hosts, e.g., 'your_servers'
+- name: Setup secure local user with SSH key and sudo access
+  hosts: all # Or specify your target hosts, e.g., 'your_servers', 'new'
   become: yes # This allows Ansible to run tasks with elevated privileges (sudo)
 
   vars:
@@ -9,31 +9,46 @@
     sudo_group: sudo # Common sudo group on Debian/Ubuntu. Use 'wheel' for CentOS/RHEL.
 
   tasks:
-    - name: Ensure the new user exists
+    - name: Ensure the new user exists, has a shell, home directory, and is in the sudo group
       ansible.builtin.user:
         name: "{{ new_username }}"
         state: present
-        shell: /bin/bash # Set a default shell for the user
-        create_home: yes # Ensure the home directory is created
+        shell: /bin/bash
+        create_home: yes
+        groups: "{{ sudo_group }}" # Add user to the specified sudo group
+        append: yes # Ensure the user is added to existing groups, not replaced
 
-    - name: Ensure .ssh directory exists in the user's home
+    - name: Ensure .ssh directory exists in the user's home with correct permissions
       ansible.builtin.file:
         path: "/home/{{ new_username }}/.ssh"
         state: directory
-        mode: '0700' # Permissions for .ssh directory (owner read/write/execute, others none)
+        mode: '0700' # owner read/write/execute, others none - essential for SSH security
         owner: "{{ new_username }}"
         group: "{{ new_username }}"
 
-    - name: Copy the public key to authorized_keys
-      ansible.builtin.copy:
-        src: "./static/files/{{ ssh_public_key_file }}" # Path to your public key on the Ansible control machine
-        dest: "/home/{{ new_username }}/.ssh/authorized_keys"
-        mode: '0600' # Permissions for authorized_keys (owner read/write, others none)
-        owner: "{{ new_username }}"
-        group: "{{ new_username }}"
+    - name: Deploy SSH Public Key to authorized_keys
+      ansible.builtin.authorized_key:
+        user: "{{ new_username }}"
+        key: "{{ lookup('file', 'files/' + ssh_public_key_file) }}" # Path relative to the playbook's 'files' directory
+        state: present
+        # The authorized_key module automatically sets mode 0600 and correct ownership for authorized_keys
 
-    - name: Add the new user to the sudo group (which grants sudoers access)
-      ansible.builtin.user:
-        name: "{{ new_username }}"
-        groups: "{{ sudo_group }}" # This correctly adds the user to the group that has sudo privileges
-        append: yes # This ensures the user is added to the group without removing them from others
+    - name: Ensure PubkeyAcceptedAlgorithms +ssh-rsa is present in sshd_config (for compatibility)
+      ansible.builtin.lineinfile:
+        path: "/etc/ssh/sshd_config"
+        line: "PubkeyAcceptedAlgorithms +ssh-rsa"
+        regexp: "^#?PubkeyAcceptedAlgorithms" # Matches commented out or uncommented line
+        insertafter: "^# Authentication:" # Inserts after a common section header, if not found
+        state: present
+      notify: restart sshd
+
+    - name: Display system facts (useful for debugging and information)
+      ansible.builtin.debug:
+        var: ansible_facts # This variable contains all gathered facts about the host
+
+  handlers:
+    - name: restart sshd
+      ansible.builtin.service:
+        name: sshd # Use 'sshd' for most systems (e.g., CentOS, RHEL, some Debian)
+        # Use 'ssh' for others (e.g., Ubuntu)
+        state: restarted
