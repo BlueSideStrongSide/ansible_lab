@@ -1,0 +1,39 @@
+---
+- name: Setup local user with SSH key and sudo access
+  hosts: all # Or specify your target hosts, e.g., 'your_servers'
+  become: yes # This allows Ansible to run tasks with elevated privileges (sudo)
+
+  vars:
+    new_username: topflightmanagement
+    ssh_public_key_file: id_rsa.pub # Name of your public key file in the 'files' directory
+    sudo_group: sudo # Common sudo group on Debian/Ubuntu. Use 'wheel' for CentOS/RHEL.
+
+  tasks:
+    - name: Ensure the new user exists
+      ansible.builtin.user:
+        name: "{{ new_username }}"
+        state: present
+        shell: /bin/bash # Set a default shell for the user
+        create_home: yes # Ensure the home directory is created
+
+    - name: Ensure .ssh directory exists in the user's home
+      ansible.builtin.file:
+        path: "/home/{{ new_username }}/.ssh"
+        state: directory
+        mode: '0700' # Permissions for .ssh directory (owner read/write/execute, others none)
+        owner: "{{ new_username }}"
+        group: "{{ new_username }}"
+
+    - name: Copy the public key to authorized_keys
+      ansible.builtin.copy:
+        src: "./files/{{ ssh_public_key_file }}" # Path to your public key on the Ansible control machine
+        dest: "/home/{{ new_username }}/.ssh/authorized_keys"
+        mode: '0600' # Permissions for authorized_keys (owner read/write, others none)
+        owner: "{{ new_username }}"
+        group: "{{ new_username }}"
+
+    - name: Add the new user to the sudo group (which grants sudoers access)
+      ansible.builtin.user:
+        name: "{{ new_username }}"
+        groups: "{{ sudo_group }}" # This correctly adds the user to the group that has sudo privileges
+        append: yes # This ensures the user is added to the group without removing them from others
