@@ -11,7 +11,7 @@
     - name: Create a user 'johnd' with a home directory
       ansible.builtin.user:
         name: johnd
-        create_home: yes
+        create_home: true
 
   #   - name: Ensure the new user exists, has a shell, home directory, and is in the sudo group
   #     ansible.builtin.user:
