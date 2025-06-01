@@ -8,6 +8,24 @@
     ssh_public_key_file: id_rsa.pub # Name of your public key file in the 'files' directory
     sudo_group: sudo # Common sudo group on Debian/Ubuntu. Use 'wheel' for CentOS/RHEL.
   tasks:
+    - name: Attempt to run a sudo command without password prompt
+      ansible.builtin.shell: "sudo -n true"
+      register: sudo_check_result
+      ignore_errors: true # Allow the playbook to continue even if this fails
+
+    - name: Print sudo rights status
+      ansible.builtin.debug:
+        msg: |
+          Sudo check for user '{{ ansible_user_id }}' on '{{ inventory_hostname }}':
+          {% if sudo_check_result.rc == 0 %}
+            SUCCESS: User has NOPASSWD sudo rights (or sudo is configured to not prompt for this command).
+            Output: {{ sudo_check_result.stdout | default('No output') }}
+          {% else %}
+            FAILURE: User does NOT have NOPASSWD sudo rights or requires a password.
+            Return Code: {{ sudo_check_result.rc }}
+            Error: {{ sudo_check_result.stderr | default('No error output') }}
+            Hint: If you expect sudo to work, ensure the connecting user is in the 'sudo' or 'wheel' group and/or configured for NOPASSWD.
+          {% endif %}
     - name: Create a user 'johnd' with a home directory
       ansible.builtin.user:
         name: johnd
