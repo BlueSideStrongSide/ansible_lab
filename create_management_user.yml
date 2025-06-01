@@ -1,7 +1,7 @@
 ---
 - name: Setup secure local user with SSH key and sudo access
   hosts: all # Or specify your target hosts, e.g., 'your_servers', 'new'
-  become: yes # This allows Ansible to run tasks with elevated privileges (sudo)
+  become: true # This allows Ansible to run tasks with elevated privileges (sudo)
 
   vars:
     new_username: topflight_management
