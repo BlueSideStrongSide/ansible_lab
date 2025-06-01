@@ -4,7 +4,7 @@
   become: yes # This allows Ansible to run tasks with elevated privileges (sudo)
 
   vars:
-    new_username: topflightmanagement
+    new_username: topflight_management
     ssh_public_key_file: id_rsa.pub # Name of your public key file in the 'files' directory
     sudo_group: sudo # Common sudo group on Debian/Ubuntu. Use 'wheel' for CentOS/RHEL.
 
