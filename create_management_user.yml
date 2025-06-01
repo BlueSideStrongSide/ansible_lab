@@ -1,72 +1,39 @@
 ---
-- name: Setup secure local user with SSH key and sudo access
-  hosts: all # Or specify your target hosts, e.g., 'your_servers', 'new'
-  become: true # This allows Ansible to run tasks with elevated privileges (sudo)
+- name: Setup local user with SSH key and sudo access
+  hosts: all
+  become: yes
 
   vars:
     new_username: topflight_management
-    ssh_public_key_file: id_rsa.pub # Name of your public key file in the 'files' directory
-    sudo_group: sudo # Common sudo group on Debian/Ubuntu. Use 'wheel' for CentOS/RHEL.
+    ssh_public_key_file: id_rsa.pub
+    sudo_group: sudo
+
   tasks:
-    - name: Attempt to run a sudo command without password prompt
-      ansible.builtin.shell: "sudo -n true"
-      register: sudo_check_result
-      ignore_errors: true # Allow the playbook to continue even if this fails
-
-    # - name: Print sudo rights status
-    #   ansible.builtin.debug:
-    #     msg: |
-    #       Sudo check for user '{{ ansible_user_id }}' on '{{ inventory_hostname }}':
-    #       {% if sudo_check_result.rc == 0 %}
-    #         SUCCESS: User has NOPASSWD sudo rights (or sudo is configured to not prompt for this command).
-    #         Output: {{ sudo_check_result.stdout | default('No output') }}
-    #       {% else %}
-    #         FAILURE: User does NOT have NOPASSWD sudo rights or requires a password.
-    #         Return Code: {{ sudo_check_result.rc }}
-    #         Error: {{ sudo_check_result.stderr | default('No error output') }}
-    #         Hint: If you expect sudo to work, ensure the connecting user is in the 'sudo' or 'wheel' group and/or configured for NOPASSWD.
-    #       {% endif %}
-
-    - name: Ensure the new user exists, has a shell, home directory, and is in the sudo group
+    - name: Ensure the new user exists
       ansible.builtin.user:
-        name: "topflight_management"
+        name: "{{ new_username }}"
         state: present
         shell: /bin/bash
         create_home: yes
-        groups: "{{ sudo_group }}" # Add user to the specified sudo group
-        append: yes # Ensure the user is added to existing groups, not replaced
 
-    - name: Ensure .ssh directory exists in the user's home with correct permissions
+    - name: Ensure .ssh directory exists in the user's home
       ansible.builtin.file:
-        path: "/home/topflight_management/.ssh"
+        path: "/home/{{ new_username }}/.ssh"
         state: directory
-        mode: '0700' # owner read/write/execute, others none - essential for SSH security
-        owner: "topflight_management"
-        group: "topflight_management"
+        mode: '0700'
+        owner: "{{ new_username }}"
+        group: "{{ new_username }}"
 
-    - name: Deploy SSH Public Key to authorized_keys
-      ansible.builtin.authorized_key:
-        user: "topflight_management"
-        key: "{{ lookup('file', 'files/' + ssh_public_key_file) }}" # Path relative to the playbook's 'files' directory
-        state: present
-        # The authorized_key module automatically sets mode 0600 and correct ownership for authorized_keys
+    - name: Copy the public key to authorized_keys
+      ansible.builtin.copy:
+        src: "./static/files/{{ ssh_public_key_file }}"
+        dest: "/home/{{ new_username }}/.ssh/authorized_keys"
+        mode: '0600'
+        owner: "{{ new_username }}"
+        group: "{{ new_username }}"
 
-    - name: Ensure PubkeyAcceptedAlgorithms +ssh-rsa is present in sshd_config (for compatibility)
-      ansible.builtin.lineinfile:
-        path: "/etc/ssh/sshd_config"
-        line: "PubkeyAcceptedAlgorithms +ssh-rsa"
-        regexp: "^#?PubkeyAcceptedAlgorithms" # Matches commented out or uncommented line
-        insertafter: "^# Authentication:" # Inserts after a common section header, if not found
-        state: present
-      notify: restart sshd
-
-    - name: Display system facts (useful for debugging and information)
-      ansible.builtin.debug:
-        var: ansible_facts # This variable contains all gathered facts about the host
-
-  handlers:
-    - name: restart sshd
-      ansible.builtin.service:
-        name: sshd # Use 'sshd' for most systems (e.g., CentOS, RHEL, some Debian)
-        # Use 'ssh' for others (e.g., Ubuntu)
-        state: restarted
+    - name: Add the new user to the sudo group (which grants sudoers access)
+      ansible.builtin.user:
+        name: "{{ new_username }}"
+        groups: "{{ sudo_group }}"
+        append: yes
