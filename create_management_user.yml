@@ -1,39 +1,64 @@
 ---
-- name: Setup local user with SSH key and sudo access
-  hosts: all
-  become: yes
+- name: Setup secure local user with SSH key and NOPASSWD sudo access
+  hosts: all # Or specify your target hosts, e.g., 'your_servers', 'new'
+  become: yes # This allows Ansible to run tasks with elevated privileges (sudo)
 
   vars:
     new_username: topflight_management
-    ssh_public_key_file: id_rsa.pub
-    sudo_group: sudo
+    ssh_public_key_file: id_rsa.pub # Name of your public key file in the 'files' directory
+    sudo_group: sudo # Common sudo group on Debian/Ubuntu. Use 'wheel' for CentOS/RHEL.
 
   tasks:
-    - name: Ensure the new user exists
+    - name: Ensure the new user exists, has a shell, home directory, and is in the sudo group
       ansible.builtin.user:
         name: "{{ new_username }}"
         state: present
         shell: /bin/bash
         create_home: yes
+        groups: "{{ sudo_group }}" # Add user to the specified sudo group
+        append: yes # Ensure the user is added to existing groups, not replaced
 
-    - name: Ensure .ssh directory exists in the user's home
+    - name: Ensure .ssh directory exists in the user's home with correct permissions
       ansible.builtin.file:
         path: "/home/{{ new_username }}/.ssh"
         state: directory
-        mode: '0700'
+        mode: '0700' # owner read/write/execute, others none - essential for SSH security
         owner: "{{ new_username }}"
         group: "{{ new_username }}"
 
     - name: Copy the public key to authorized_keys
-      ansible.builtin.copy:
-        src: "static/files/{{ ssh_public_key_file }}"
+      ansible.builtin.copy: # Using copy as per your current playbook structure
+        src: "static/files/{{ ssh_public_key_file }}" # Path we fixed earlier
         dest: "/home/{{ new_username }}/.ssh/authorized_keys"
-        mode: '0600'
+        mode: '0600' # Correct permissions for authorized_keys
         owner: "{{ new_username }}"
         group: "{{ new_username }}"
 
-    - name: Add the new user to the sudo group (which grants sudoers access)
-      ansible.builtin.user:
-        name: "{{ new_username }}"
-        groups: "{{ sudo_group }}"
-        append: yes
+    - name: Configure NOPASSWD for the new user in sudoers.d
+      ansible.builtin.copy:
+        content: "{{ new_username }} ALL=(ALL) NOPASSWD: ALL"
+        dest: "/etc/sudoers.d/90-{{ new_username }}" # Common practice to use a prefix like 90-
+        mode: '0440' # Required permissions for sudoers files (read-only for owner/group)
+        owner: root
+        group: root
+        validate: /usr/sbin/visudo -cf %s # Validate syntax to prevent breaking sudo
+      # Note: This task explicitly grants NOPASSWD. Use with caution and ensure SSH keys are secure.
+
+    - name: Ensure PubkeyAcceptedAlgorithms +ssh-rsa is present in sshd_config (for compatibility)
+      ansible.builtin.lineinfile:
+        path: "/etc/ssh/sshd_config"
+        line: "PubkeyAcceptedAlgorithms +ssh-rsa"
+        regexp: "^#?PubkeyAcceptedAlgorithms"
+        insertafter: "^# Authentication:"
+        state: present
+      notify: restart sshd
+
+    - name: Display system facts (useful for debugging and information)
+      ansible.builtin.debug:
+        var: ansible_facts
+
+  handlers:
+    - name: restart sshd
+      ansible.builtin.service:
+        name: sshd # Or 'ssh' on some systems like Ubuntu
+        state: restarted
