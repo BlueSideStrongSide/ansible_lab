@@ -26,7 +26,7 @@
 
     - name: Copy the public key to authorized_keys
       ansible.builtin.copy:
-        src: "./files/{{ ssh_public_key_file }}" # Path to your public key on the Ansible control machine
+        src: "./static/files/{{ ssh_public_key_file }}" # Path to your public key on the Ansible control machine
         dest: "/home/{{ new_username }}/.ssh/authorized_keys"
         mode: '0600' # Permissions for authorized_keys (owner read/write, others none)
         owner: "{{ new_username }}"
