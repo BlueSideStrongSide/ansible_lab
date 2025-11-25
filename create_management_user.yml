@@ -4,7 +4,7 @@
   become: yes
 
   vars:
-    new_username: new_username: "{{ lookup('env', 'NEW_USER_NAME') }}"
+    new_username: "{{ lookup('env', 'NEW_USER_NAME') }}"
     ssh_public_key_file: id_rsa.pub
     sudo_group: sudo
 
