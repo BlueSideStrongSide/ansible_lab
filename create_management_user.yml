@@ -1,0 +1,67 @@
+---
+- name: Setup secure local user with SSH key and NOPASSWD sudo access
+  hosts: all
+  become: yes
+
+  vars:
+    new_username: new_username: "{{ lookup('env', 'NEW_USER_NAME') }}"
+    ssh_public_key_file: id_rsa.pub
+    sudo_group: sudo
+
+  tasks:
+    - name: Ensure the new user exists
+      ansible.builtin.user:
+        name: "{{ new_username }}"
+        state: present
+        shell: /bin/bash
+        create_home: yes
+
+    - name: Add the new user to the sudo group (which grants sudoers access)
+      ansible.builtin.user:
+        name: "{{ new_username }}"
+        groups: "{{ sudo_group }}"
+        append: yes
+
+    - name: Configure NOPASSWD for the new user in sudoers.d
+      ansible.builtin.copy:
+        content: "{{ new_username }} ALL=(ALL) NOPASSWD: ALL"
+        dest: "/etc/sudoers.d/90-{{ new_username }}"
+        mode: '0440'
+        owner: root
+        group: root
+        validate: /usr/sbin/visudo -cf %s
+
+    - name: Ensure .ssh directory exists in the user's home with correct permissions
+      ansible.builtin.file:
+        path: "/home/{{ new_username }}/.ssh"
+        state: directory
+        mode: '0700'
+        owner: "{{ new_username }}"
+        group: "{{ new_username }}"
+
+    - name: Copy the public key to authorized_keys
+      ansible.builtin.copy:
+        src: "static/files/{{ ssh_public_key_file }}"
+        dest: "/home/{{ new_username }}/.ssh/authorized_keys"
+        mode: '0600'
+        owner: "{{ new_username }}"
+        group: "{{ new_username }}"
+
+    - name: Ensure PubkeyAcceptedAlgorithms +ssh-rsa is present in sshd_config (for compatibility)
+      ansible.builtin.lineinfile:
+        path: "/etc/ssh/sshd_config"
+        line: "PubkeyAcceptedAlgorithms +ssh-rsa"
+        regexp: "^#?PubkeyAcceptedAlgorithms"
+        insertafter: "^# Authentication:"
+        state: present
+      notify: restart sshd
+
+    - name: Display system facts (useful for debugging and information)
+      ansible.builtin.debug:
+        var: ansible_facts
+
+  handlers:
+    - name: restart sshd
+      ansible.builtin.service:
+        name: sshd # Or 'ssh' on some systems like Ubuntu
+        state: restarted
