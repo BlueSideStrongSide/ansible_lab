@@ -1,6 +1,6 @@
 ---
 - name: Install qemu-guest-agent on Debian/Ubuntu
-  hosts: your_target_group
+  hosts: all
   become: yes
 
   tasks:
