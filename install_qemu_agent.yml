@@ -1,18 +1,23 @@
 ---
-- name: Install qemu-guest-agent on Debian/Ubuntu systems
-  hosts: all
+- name: Install qemu-guest-agent on Debian/Ubuntu
+  hosts: your_target_group
   become: yes
 
   tasks:
+    - name: Check if qemu-guest-agent is already installed
+      ansible.builtin.command: dpkg -l qemu-guest-agent
+      register: qemu_agent_check
+      ignore_errors: yes
+      changed_when: false
+
     - name: Ensure qemu-guest-agent is installed and started
-      # This task uses a block to ensure both installation and service management are grouped
+      when: qemu_agent_check.rc != 0
       block:
         - name: Install qemu-guest-agent package
           ansible.builtin.apt:
             name: qemu-guest-agent
             state: present
             update_cache: yes
-          
           when: ansible_facts['os_family'] == 'Debian'
 
         - name: Ensure qemu-guest-agent service is running and enabled
@@ -22,8 +27,12 @@
             enabled: yes
           when: ansible_facts['os_family'] == 'Debian'
 
-      # Optional: Add a rescue block for error handling if the installation fails
       rescue:
         - name: Handle installation failure
           debug:
-            msg: "Failed to install qemu-guest-agent on {{ inventory_hostname }}. Check connection and repositories."
+            msg: "Installation failed on {{ inventory_hostname }}"
+
+    - name: Report skip status if already installed
+      ansible.builtin.debug:
+        msg: "qemu-guest-agent is already installed. Skipping tasks."
+      when: qemu_agent_check.rc == 0
