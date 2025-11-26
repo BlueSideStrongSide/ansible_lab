@@ -1,7 +1,7 @@
 ---
 - name: Install qemu-guest-agent on Debian/Ubuntu systems
-  hosts: all # Replace with the name of your inventory group (e.g., 'virtual_machines')
-  become: yes # Use 'sudo' (privilege escalation) to install the package
+  hosts: all
+  become: yes
 
   tasks:
     - name: Ensure qemu-guest-agent is installed and started
@@ -12,7 +12,7 @@
             name: qemu-guest-agent
             state: present
             update_cache: yes
-          # This 'when' condition restricts the task to run only on Debian and Ubuntu.
+          
           when: ansible_facts['os_family'] == 'Debian'
 
         - name: Ensure qemu-guest-agent service is running and enabled
